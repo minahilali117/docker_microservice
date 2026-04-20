@@ -1,188 +1,117 @@
 
-# Online Catalog - 3 Microservices Local Setup
+# Online Catalog - Artifact-Focused Setup and Testing Guide
 
-This project runs as a local microservices system with one frontend and three backend microservices. It now includes product CRUD, cart + checkout, order details with line items, and order lifecycle history.
+This README is streamlined for submission evidence. It covers what to run, what to test, and what screenshots to capture for Docker and Terraform.
 
-## Architecture
+## Scope Covered
 
-### Services
-1. Frontend UI (React): port 3000
-2. Catalog Management (products + CRUD): port 8081
-3. Customer Support (customers + aggregation): port 8082
-4. Order Processing (checkout + status lifecycle): port 8083
+1. Artifact 1: Containerization (Docker)
+2. Artifact 2: Infrastructure as Code (Terraform)
 
-### Data Stores
-1. Catalog service uses SQLite file database: `backend/catalog-management/catalog.sqlite`
-2. Customer support uses SQLite file database: `backend/customer-support/db/development.sqlite`
-3. Order processing uses SQLite file database: `backend/order-processing/db/development.sqlite`
+## Services and Ports
 
-## New Functionality Added
+1. Frontend: 3000
+2. Catalog Management: 8081
+3. Customer Support: 8082
+4. Order Processing: 8083
 
-1. Real cart flow in frontend (add item, adjust quantity, checkout)
-2. Checkout endpoint that creates orders and order items
-3. Order status lifecycle endpoint (`pending`, `processing`, `shipped`, `completed`, `cancelled`)
-4. Order status history endpoint and UI viewer
-5. Product CRUD API and UI management in catalog service
-6. Customer CRUD API and order summary endpoint in customer-support service
+## Artifact 1 - Docker (Completed)
 
-## Ports
+### Requirement Mapping
 
-1. Frontend: `http://localhost:3000`
-2. Catalog service: `http://localhost:8081`
-3. Customer-support service: `http://localhost:8082`
-4. Order-processing service: `http://localhost:8083`
+1. Unique Dockerfile per microservice: completed.
+2. Automated image build: completed via Docker Compose.
 
-## Local Setup
+### Test Steps
+
+Run from project root:
+
+```powershell
+cd online_catalog
+docker compose build
+docker compose up -d
+docker ps
+```
+
+Verify endpoints:
+
+1. http://localhost:3000
+2. http://localhost:8081/products
+3. http://localhost:8082/customers
+4. http://localhost:8083/orders
+
+Stop containers:
+
+```powershell
+docker compose down
+```
+
+### Evidence to Capture
+
+1. Dockerfiles for each microservice.
+2. `docker compose build` success output.
+3. `docker compose up -d` success output.
+4. `docker ps` with running containers.
+5. Browser/API checks for ports 3000, 8081, 8082, 8083.
+
+## Artifact 2 - Terraform (In Progress)
+
+### Requirement Mapping
+
+1. AWS Provisioning with Terraform: EC2 resource defined and applied.
+2. Networking and Security: VPC, subnet, IGW, route table, and security group defined.
 
 ### Prerequisites
-1. Node.js 22+
-2. npm
-3. Windows PowerShell (for helper scripts)
 
-### Install Dependencies
+1. AWS CLI configured.
+2. EC2 key pair exists in `us-east-1`.
+3. `terraform.tfvars` has real values, especially `ssh_ingress_cidr = "your.public.ip/32"`.
 
-Run these once:
+### Apply Steps
 
-```powershell
-cd online_catalog/backend/catalog-management
-npm install
-
-cd ../customer-support
-npm install
-
-cd ../order-processing
-npm install
-
-cd ../../frontend
-npm install
-```
-
-### Apply Order DB Migrations
+Run from Terraform directory:
 
 ```powershell
-cd online_catalog/backend/order-processing
-npx dotenv sequelize db:migrate
+cd online_catalog/infra/terraform
+terraform init
+terraform validate
+terraform plan -out tfplan
+terraform apply tfplan
+terraform output
 ```
 
-## Run Commands
+### What to Test After Apply
 
-### Run Everything in One Command
+1. AWS Console (region `us-east-1`) shows created resources:
+	VPC, Subnet, Internet Gateway, Route Table, Security Group, EC2.
+2. `terraform output` returns:
+	`ec2_public_ip`, `ec2_public_dns`, `vpc_id`, `public_subnet_id`, `security_group_id`.
+3. EC2 instance state is `running`.
+4. Security group allows SSH only from your IP `/32`.
 
-From `online_catalog`:
+### Evidence to Capture
+
+1. `terraform validate` success.
+2. `terraform plan -out tfplan` output summary.
+3. `terraform apply tfplan` completion output.
+4. `terraform output` values.
+5. AWS Console screenshots for EC2, VPC, Subnet, Security Group.
+
+## Progress Checklist
+
+- [x] Artifact 1 Dockerfiles and containerization completed.
+- [x] Artifact 2 Terraform configuration written.
+- [x] Terraform validate completed.
+- [x] Terraform plan/apply/output executed.
+- [ ] Final screenshot bundle captured for submission.
+
+## Cost Cleanup (Free Tier Safety)
+
+Run this when demo/testing is done:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start-all.ps1
+cd online_catalog/infra/terraform
+terraform destroy
 ```
 
-This starts all 4 local processes in background and prints active listeners.
-
-### Stop Everything in One Command
-
-From `online_catalog`:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\stop-all.ps1
-```
-
-### Run Manually (Separate Terminals)
-
-1. Catalog management
-
-```powershell
-cd online_catalog/backend/catalog-management
-npm start
-```
-
-2. Customer support
-
-```powershell
-cd online_catalog/backend/customer-support
-npm run start:development
-```
-
-3. Order processing
-
-```powershell
-cd online_catalog/backend/order-processing
-npm run start:development
-```
-
-4. Frontend
-
-```powershell
-cd online_catalog/frontend
-npm start
-```
-
-## Core API Endpoints
-
-### Catalog Management (8081)
-1. `GET /products`
-2. `GET /products/:id`
-3. `POST /products`
-4. `PUT /products/:id`
-5. `DELETE /products/:id`
-
-### Customer Support (8082)
-1. `GET /customers`
-2. `GET /customers/:id`
-3. `POST /customers`
-4. `PUT /customers/:id`
-5. `DELETE /customers/:id`
-6. `GET /customers/:id/order-summary`
-
-### Order Processing (8083)
-1. `GET /orders`
-2. `GET /orders/:customerId`
-3. `GET /orders/by-id/:orderId`
-4. `POST /checkout`
-5. `PATCH /orders/:orderId/status`
-6. `GET /orders/:orderId/status-history`
-
-## Frontend Feature Checklist
-
-1. Product cards with add-to-cart
-2. Product create/update/delete form
-3. Customer list with customer ID visibility
-4. Customer create form
-5. Checkout panel with customer ID input
-6. Order status update panel
-7. Status history panel
-8. Order details panel with line items
-
-## Troubleshooting
-
-### Port Already in Use
-
-```powershell
-Get-NetTCPConnection -LocalPort 3000,8081,8082,8083 -State Listen
-```
-
-Then stop by process id:
-
-```powershell
-Stop-Process -Id <PID> -Force
-```
-
-### Frontend White Screen
-
-1. Ensure all backends are running on `8081/8082/8083`
-2. Hard refresh browser with Ctrl+F5
-3. Check browser console errors
-
-### Migration Errors
-
-Re-run migrations in order-processing:
-
-```powershell
-cd online_catalog/backend/order-processing
-npx dotenv sequelize db:migrate
-```
-
-## Notes
-
-This README reflects the current local architecture in this repository (3 backend microservices + frontend) and replaces older consolidated-service instructions.
-
-## License
-
-ISC
+Capture one final screenshot of successful destroy for documentation.
