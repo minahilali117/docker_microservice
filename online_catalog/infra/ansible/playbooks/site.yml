@@ -1,0 +1,91 @@
+---
+- name: Prepare EC2 for local Kubernetes cluster
+  hosts: ec2
+  become: true
+  gather_facts: true
+
+  vars:
+    kubectl_version: "v1.30.4"
+    kind_version: "v0.23.0"
+    kubectl_url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    kind_url: "https://kind.sigs.k8s.io/dl/{{ kind_version }}/kind-linux-amd64"
+
+  tasks:
+    - name: Update all packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+
+    - name: Install base tools
+      ansible.builtin.dnf:
+        name:
+          - docker
+          - git
+          - tar
+        state: present
+
+    - name: Enable and start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Ensure ec2-user can use Docker
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: true
+
+    - name: Create local bin directory for ec2-user
+      ansible.builtin.file:
+        path: /home/ec2-user/bin
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: "0755"
+
+    - name: Create kubeconfig directory for ec2-user
+      ansible.builtin.file:
+        path: /home/ec2-user/.kube
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: "0755"
+
+    - name: Install kubectl
+      ansible.builtin.get_url:
+        url: "{{ kubectl_url }}"
+        dest: /usr/local/bin/kubectl
+        mode: "0755"
+
+    - name: Install kind
+      ansible.builtin.get_url:
+        url: "{{ kind_url }}"
+        dest: /usr/local/bin/kind
+        mode: "0755"
+
+    - name: Create a single-node kind cluster if it does not exist
+      ansible.builtin.shell: |
+        set -e
+        if ! kind get clusters | grep -qx online-catalog; then
+          KUBECONFIG=/home/ec2-user/.kube/config kind create cluster --name online-catalog
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Ensure ec2-user owns kubeconfig files
+      ansible.builtin.file:
+        path: /home/ec2-user/.kube
+        state: directory
+        recurse: true
+        owner: ec2-user
+        group: ec2-user
+
+    - name: Wait for cluster nodes to become ready
+      become_user: ec2-user
+      ansible.builtin.shell: |
+        set -e
+        export KUBECONFIG=/home/ec2-user/.kube/config
+        kubectl wait --for=condition=Ready nodes --all --timeout=180s
+      args:
+        executable: /bin/bash
