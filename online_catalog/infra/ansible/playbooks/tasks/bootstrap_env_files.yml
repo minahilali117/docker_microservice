@@ -1,0 +1,11 @@
+---
+- name: Ensure generated environment files exist from examples
+  become_user: ec2-user
+  ansible.builtin.copy:
+    src: "{{ app_compose_dir }}/{{ item.example }}"
+    dest: "{{ app_compose_dir }}/{{ item.target }}"
+    remote_src: true
+    force: false
+    mode: "0644"
+  loop: "{{ env_files }}"
+  when: item.example is defined and item.target is defined

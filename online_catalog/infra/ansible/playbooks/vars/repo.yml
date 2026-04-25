@@ -1,0 +1,12 @@
+---
+repo_url: "https://github.com/minahilali117/online_catalogue_microservice.git"
+repo_branch: "master"
+repo_dest: "/home/ec2-user/online_catalogue_microservice"
+app_compose_dir: "{{ repo_dest }}/online_catalog"
+env_files:
+  - { example: ".env.example", target: ".env" }
+  - { example: "frontend/.env.example", target: "frontend/.env" }
+  - { example: "backend/customer-support/.env.example", target: "backend/customer-support/.env" }
+  - { example: "backend/order-processing/.env.example", target: "backend/order-processing/.env" }
+  - { example: "backend/products-service/.env.example", target: "backend/products-service/.env" }
+  - { example: "backend/customers-orders-service/.env.example", target: "backend/customers-orders-service/.env" }

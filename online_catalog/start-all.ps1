@@ -2,6 +2,8 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+& "$root\setup-env.ps1"
+
 # Stop stale node processes to avoid EADDRINUSE issues on local ports.
 Get-Process node | Stop-Process -Force
 

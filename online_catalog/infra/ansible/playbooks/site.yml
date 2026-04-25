@@ -7,8 +7,13 @@
   vars:
     kubectl_version: "v1.30.4"
     kind_version: "v0.23.0"
+    docker_compose_version: "v2.32.4"
+    docker_compose_url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-linux-x86_64"
     kubectl_url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
     kind_url: "https://kind.sigs.k8s.io/dl/{{ kind_version }}/kind-linux-amd64"
+
+  vars_files:
+    - vars/repo.yml
 
   tasks:
     - name: Update all packages
@@ -23,6 +28,18 @@
           - git
           - tar
         state: present
+
+    - name: Ensure Docker CLI plugins directory exists
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+
+    - name: Install Docker Compose plugin
+      ansible.builtin.get_url:
+        url: "{{ docker_compose_url }}"
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: "0755"
 
     - name: Enable and start Docker
       ansible.builtin.systemd:
@@ -89,3 +106,6 @@
         kubectl wait --for=condition=Ready nodes --all --timeout=180s
       args:
         executable: /bin/bash
+
+    - name: Sync and verify application repository
+      ansible.builtin.import_tasks: tasks/repo_sync_and_deploy.yml

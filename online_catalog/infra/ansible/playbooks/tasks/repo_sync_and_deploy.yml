@@ -1,0 +1,56 @@
+---
+- name: Clone or update application repository
+  become_user: ec2-user
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dest }}"
+    version: "{{ repo_branch }}"
+    update: true
+    force: true
+
+- name: Bootstrap environment files from examples
+  ansible.builtin.import_tasks: tasks/bootstrap_env_files.yml
+
+- name: Ensure docker-compose.yml exists in expected application directory
+  ansible.builtin.stat:
+    path: "{{ app_compose_dir }}/docker-compose.yml"
+  register: compose_file
+
+- name: Fail when docker-compose.yml is missing
+  ansible.builtin.fail:
+    msg: >-
+      docker-compose.yml was not found at {{ app_compose_dir }}.
+      Verify app_compose_dir matches your repository structure.
+  when: not compose_file.stat.exists
+
+- name: Verify generated environment files exist
+  ansible.builtin.stat:
+    path: "{{ app_compose_dir }}/{{ item.target }}"
+  loop: "{{ env_files }}"
+  register: env_files_state
+
+- name: Fail when generated environment file is missing
+  ansible.builtin.fail:
+    msg: "Missing generated env file: {{ item.stat.path }}"
+  loop: "{{ env_files_state.results }}"
+  when: not item.stat.exists
+
+- name: Verify Docker Compose command is available
+  become_user: ec2-user
+  ansible.builtin.command: docker compose version
+  register: compose_version
+  changed_when: false
+
+- name: Validate Docker Compose configuration without starting containers
+  become_user: ec2-user
+  ansible.builtin.shell: |
+    set -e
+    cd "{{ app_compose_dir }}"
+    docker compose config > /dev/null
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Print manual Docker Compose start command
+  ansible.builtin.debug:
+    msg: "Verification complete. Start services manually with: cd {{ app_compose_dir }} && docker compose up -d --build"
