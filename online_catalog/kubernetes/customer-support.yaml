@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-support
+  namespace: online-catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: customer-support
+  template:
+    metadata:
+      labels:
+        app: customer-support
+    spec:
+      containers:
+        - name: customer-support
+          image: docker.io/ayaankhan17/customer-support:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8082"
+            - name: ORDER_PROCESSING_BASE_URL
+              value: "http://order-processing:8083"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: customer-support
+  namespace: online-catalog
+spec:
+  selector:
+    app: customer-support
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+  type: ClusterIP

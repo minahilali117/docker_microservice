@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: online-catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: docker.io/ayaankhan17/frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: REACT_APP_PRODUCTS_BASE_URL
+              value: "http://catalog-management:8081"
+            - name: REACT_APP_CUSTOMERS_BASE_URL
+              value: "http://customer-support:8082"
+            - name: REACT_APP_ORDER_BASE_URL
+              value: "http://order-processing:8083"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: online-catalog
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
