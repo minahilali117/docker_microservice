@@ -345,8 +345,8 @@ kubectl rollout status deployment/frontend -n online-catalog
 
 In GitHub repository settings:
 
-1. Add secret `DOCKERHUB_USERNAME`.
-2. Add secret `DOCKERHUB_TOKEN` (Docker Hub access token, not password).
+1. Add secret `DOCKERHUB_TOKEN` (Docker Hub access token, not password).
+2. Workflow pushes to Docker Hub namespace `ayaankhan17`.
 3. Ensure GitHub Actions is enabled for the repository.
 4. Ensure workflow has permission to push commits (Settings -> Actions -> Workflow permissions -> Read and write).
 

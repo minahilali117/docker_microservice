@@ -352,8 +352,8 @@ NodePort endpoint checks:
 
 In GitHub repository settings, add:
 
-1. `DOCKERHUB_USERNAME` secret
-2. `DOCKERHUB_TOKEN` secret
+1. `DOCKERHUB_TOKEN` secret
+2. Workflow Docker Hub namespace is fixed to `ayaankhan17`
 3. Actions workflow permission set to read and write repository contents
 
 ### Commands
