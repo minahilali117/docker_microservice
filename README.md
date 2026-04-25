@@ -13,6 +13,8 @@ Collaboration onboarding details are in `COLLABORATION_SETUP.md`.
 1. Artifact 1: Containerization (Docker)
 2. Artifact 2: Infrastructure as Code (Terraform)
 3. Artifact 3: Configuration as Code (Ansible)
+4. Artifact 4: Cluster Deployment (Kubernetes Manifests)
+5. Artifact 5: CI/CD (GitHub Actions + Argo CD)
 
 ## Demo Ownership and Collaboration Model
 
@@ -37,10 +39,19 @@ terraform {
 
 ## Services and Ports
 
+Docker Compose (local):
+
 1. Frontend: 3000
 2. Catalog Management: 8081
 3. Customer Support: 8082
 4. Order Processing: 8083
+
+Kubernetes on kind (EC2 public access):
+
+1. Frontend: 3000
+2. Catalog Management: 30081
+3. Customer Support: 30082
+4. Order Processing: 30083
 
 ## Microservices Architecture
 
@@ -193,8 +204,10 @@ before apply, and coordinate with teammate so only one person applies at a time.
 1. Connects to the Terraform-created EC2 instance.
 2. Installs Docker, Git, kubectl, and kind.
 3. Starts Docker and adds `ec2-user` to the Docker group.
-4. Creates a single-node kind cluster named `online-catalog`.
-5. Verifies node readiness so the machine is cluster-ready for Kubernetes manifests.
+4. Creates/recreates a single-node kind cluster named `online-catalog`.
+5. Configures kind extraPortMappings for NodePort host access on 3000/30081/30082/30083.
+6. Pulls/updates the repository and auto-generates missing `.env` files from `.env.example`.
+7. Validates Docker Compose configuration (without starting application containers).
 
 ### Files Added
 
@@ -240,6 +253,144 @@ ansible-playbook -i inventory.ini playbooks/site.yml
 1. Docker: `docker compose build`, `docker compose up -d`, endpoint checks on ports 3000/8081/8082/8083.
 2. Terraform: `terraform validate`, `terraform plan`, `terraform apply`, `terraform output`.
 3. Ansible: `ansible -m ping`, `ansible-playbook`, SSH checks for docker/kind/kubectl.
+4. Kubernetes: build+push Docker Hub images, `kubectl apply -k kubernetes`, verify pods/services, validate NodePort URLs.
+5. CI/CD: push code to `master`/`main`, verify workflow builds+pushes images, verify Argo CD auto-sync updates cluster.
+
+## Artifact 4 - Kubernetes (kind on EC2)
+
+### Requirement Mapping
+
+1. Service and Deployment manifests exist for all active runtime microservices.
+2. Manifests use Docker Hub images (no local-only image dependency).
+3. Workloads run on the EC2-hosted kind cluster and are externally reachable by NodePort.
+
+### Files Added
+
+1. `online_catalog/kubernetes/namespace.yaml`
+2. `online_catalog/kubernetes/catalog-management.yaml`
+3. `online_catalog/kubernetes/customer-support.yaml`
+4. `online_catalog/kubernetes/order-processing.yaml`
+5. `online_catalog/kubernetes/frontend.yaml`
+6. `online_catalog/kubernetes/kustomization.yaml`
+7. `online_catalog/scripts/push-images.ps1`
+
+### Build and Push Images to Docker Hub
+
+Run from project folder:
+
+```powershell
+cd online_catalog
+docker login
+.\scripts\push-images.ps1 -Tag latest
+```
+
+Default Docker Hub namespace in script: `ayaankhan17`.
+
+### Deploy to Kubernetes on EC2
+
+1. Ensure old Docker Compose app stack is down on EC2:
+
+```bash
+cd /home/ec2-user/online_catalogue_microservice/online_catalog
+docker compose down
+```
+
+2. Apply manifests to kind:
+
+```bash
+export KUBECONFIG=/home/ec2-user/.kube/config
+cd /home/ec2-user/online_catalogue_microservice/online_catalog
+kubectl apply -k kubernetes
+```
+
+3. Verify rollout:
+
+```bash
+kubectl get pods -n online-catalog
+kubectl get svc -n online-catalog
+kubectl rollout status deployment/catalog-management -n online-catalog
+kubectl rollout status deployment/customer-support -n online-catalog
+kubectl rollout status deployment/order-processing -n online-catalog
+kubectl rollout status deployment/frontend -n online-catalog
+```
+
+### External Access URLs (from desktop browser)
+
+1. `http://<ec2_public_ip>:3000`
+2. `http://<ec2_public_ip>:30081/products`
+3. `http://<ec2_public_ip>:30082/customers`
+4. `http://<ec2_public_ip>:30083/orders`
+
+### Notes
+
+1. Frontend is configured to call backend APIs via the EC2 public IP NodePort endpoints.
+2. If EC2 public IP changes, update frontend manifest env values and redeploy frontend.
+3. Terraform security group must allow 3000, 30081, 30082, 30083 inbound.
+
+## Artifact 5 - CI/CD (GitHub Actions + Argo CD)
+
+### Requirement Mapping
+
+1. CI Workflow: on backend/frontend code changes, build images and push to Docker Hub.
+2. Manifest Update: CI updates image tags in Kubernetes manifests and pushes changes back to GitHub.
+3. CD Sync: Argo CD monitors repository and auto-syncs new manifests into the kind cluster.
+
+### Files Added
+
+1. `.github/workflows/cicd-build-push-and-update-manifests.yml`
+2. `online_catalog/argocd/online-catalog-app.yaml`
+3. `online_catalog/infra/ansible/playbooks/tasks/setup_argocd.yml`
+
+### One-Time GitHub Setup
+
+In GitHub repository settings:
+
+1. Add secret `DOCKERHUB_USERNAME`.
+2. Add secret `DOCKERHUB_TOKEN` (Docker Hub access token, not password).
+3. Ensure GitHub Actions is enabled for the repository.
+4. Ensure workflow has permission to push commits (Settings -> Actions -> Workflow permissions -> Read and write).
+
+### Argo CD Auto-Setup via Ansible
+
+Run Ansible playbook (same command as Artifact 3):
+
+```bash
+cd /mnt/d/university/SEMESTER\ 8/cloud\ computing/project3/online_catalog/infra/ansible
+ansible-playbook -i inventory.ini playbooks/site.yml
+```
+
+This playbook now also:
+
+1. Installs Argo CD in namespace `argocd`.
+2. Exposes Argo CD server on `https://<ec2_public_ip>:30443`.
+3. Applies Argo CD Application `online-catalog` from repo path `online_catalog/kubernetes`.
+4. Enables automated sync with prune + self-heal.
+
+### CI/CD Runtime Flow
+
+1. Developer pushes backend/frontend code to `master` or `main`.
+2. GitHub Actions workflow builds and pushes 4 images to Docker Hub with tags:
+	1. `latest`
+	2. `sha-<full_commit_sha>`
+3. Workflow updates Kubernetes image tags to the new `sha-*` tag and commits manifest changes.
+4. Argo CD detects the manifest commit and auto-syncs cluster workloads.
+5. Updated pods roll out automatically in namespace `online-catalog`.
+
+### Verification Commands on EC2
+
+```bash
+export KUBECONFIG=/home/ec2-user/.kube/config
+kubectl get application -n argocd
+kubectl get pods -n argocd
+kubectl get pods -n online-catalog
+kubectl describe application online-catalog -n argocd
+```
+
+Get initial Argo CD admin password:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+```
 
 ## Owner Demo Flow (Laptop)
 
@@ -249,8 +400,10 @@ Use this sequence when you present:
 2. Run Docker artifact checks locally from your laptop.
 3. Run Terraform plan/apply from owner laptop only.
 4. Run Ansible checks from owner laptop only.
-5. Show outputs and screenshots as evidence.
-6. End with cleanup using `terraform destroy`.
+5. Push container images to Docker Hub and apply Kubernetes manifests on EC2.
+6. Show NodePort URLs and API outputs as Artifact 4 evidence.
+7. Push a backend code change and show GitHub Actions + Argo CD auto-sync as Artifact 5 evidence.
+8. End with cleanup using `terraform destroy`.
 
 This keeps demo execution consistent and avoids concurrent infra changes during presentation.
 

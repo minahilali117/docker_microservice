@@ -171,6 +171,7 @@
   vars:
     kubectl_version: "v1.30.4"
     kind_version: "v0.23.0"
+    argocd_version: "v2.13.3"
     kind_cluster_name: "online-catalog"
     kind_config_path: "/home/ec2-user/kind-online-catalog.yaml"
     force_recreate_kind_cluster: true
@@ -270,6 +271,10 @@
                   hostPort: 30083
                   listenAddress: "0.0.0.0"
                   protocol: TCP
+                - containerPort: 30443
+                  hostPort: 30443
+                  listenAddress: "0.0.0.0"
+                  protocol: TCP
 
     - name: Check whether kind cluster already exists
       become_user: ec2-user
@@ -320,3 +325,6 @@
 
     - name: Sync and verify application repository
       ansible.builtin.import_tasks: tasks/repo_sync_and_deploy.yml
+
+    - name: Install and configure Argo CD
+      ansible.builtin.import_tasks: tasks/setup_argocd.yml

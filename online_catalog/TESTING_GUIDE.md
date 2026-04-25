@@ -5,6 +5,8 @@ This guide is for demo execution and grading. It covers only the artifacts compl
 1. Containerization (Docker)
 2. Infrastructure as Code (Terraform)
 3. Configuration as Code (Ansible)
+4. Cluster Deployment (Kubernetes)
+5. CI/CD (GitHub Actions and Argo CD)
 
 Assumption for this version of the guide:
 
@@ -28,7 +30,9 @@ Use this order in your demo:
 1. Docker tests (Artifact 1)
 2. Terraform tests (Artifact 2)
 3. Ansible tests (Artifact 3)
-4. Safe shutdown and cost cleanup
+4. Kubernetes tests (Artifact 4)
+5. CI/CD tests (Artifact 5)
+6. Safe shutdown and cost cleanup
 
 Pre-demo collaboration sync:
 
@@ -189,7 +193,8 @@ Expected:
 
 1. Configure Terraform-provisioned EC2 automatically.
 2. Install Docker and Kubernetes tooling.
-3. Initialize a local single-node Kubernetes cluster for next artifact.
+3. Initialize/recreate a local single-node Kubernetes cluster with host port mappings.
+4. Pull project repository and bootstrap missing `.env` files from `.env.example`.
 
 ### Required files
 
@@ -239,12 +244,174 @@ KUBECONFIG=/home/ec2-user/.kube/config kubectl get nodes -o wide
 3. kind get clusters shows online-catalog.
 4. kubectl get nodes shows control-plane node in Ready status.
 
+## Artifact 4: Kubernetes Testing
+
+### Tool
+
+1. Docker Hub
+2. Kubernetes manifests (Deployment/Service)
+3. kubectl + kind
+
+### General purpose of the tool
+
+1. Run microservices as declarative workloads.
+2. Expose workloads through Kubernetes Services.
+3. Keep deployment reproducible from versioned YAML.
+
+### Purpose in this project
+
+1. Deploy the active four-service stack (frontend, catalog-management, customer-support, order-processing) to the EC2 kind cluster.
+2. Use Docker Hub images built from project Dockerfiles.
+3. Validate browser/API access through NodePort.
+
+### Commands
+
+Build and push images from local machine:
+
+```powershell
+cd online_catalog
+docker login
+.\scripts\push-images.ps1 -Tag latest
+```
+
+On EC2, ensure old compose stack is down:
+
+```bash
+cd /home/ec2-user/online_catalogue_microservice/online_catalog
+docker compose down
+```
+
+Apply manifests:
+
+```bash
+export KUBECONFIG=/home/ec2-user/.kube/config
+cd /home/ec2-user/online_catalogue_microservice/online_catalog
+kubectl apply -k kubernetes
+```
+
+Rollout checks:
+
+```bash
+kubectl get pods -n online-catalog
+kubectl get svc -n online-catalog
+kubectl rollout status deployment/catalog-management -n online-catalog
+kubectl rollout status deployment/customer-support -n online-catalog
+kubectl rollout status deployment/order-processing -n online-catalog
+kubectl rollout status deployment/frontend -n online-catalog
+```
+
+NodePort endpoint checks:
+
+1. http://<EC2_PUBLIC_IP>:3000
+2. http://<EC2_PUBLIC_IP>:30081/products
+3. http://<EC2_PUBLIC_IP>:30082/customers
+4. http://<EC2_PUBLIC_IP>:30083/orders
+
+### What this tests
+
+1. Docker Hub images are pullable by the cluster.
+2. Deployment manifests schedule pods successfully.
+3. Service wiring between frontend and backend works.
+4. External NodePort access from browser/API clients works.
+
+### Expected results
+
+1. All 4 deployments show Ready replicas.
+2. `kubectl get svc -n online-catalog` lists NodePort services.
+3. Frontend page loads at `<EC2_PUBLIC_IP>:3000`.
+4. Products, customers, and orders API routes return JSON.
+
 ### Evidence to capture
 
-1. ansible ping success output.
-2. ansible-playbook success output.
-3. docker version output from EC2.
-4. kind get clusters and kubectl get nodes output.
+1. Docker Hub push output from `push-images.ps1`.
+2. `kubectl get pods -n online-catalog` output.
+3. `kubectl get svc -n online-catalog` output with NodePorts.
+4. Browser screenshots for frontend and API endpoints.
+
+## Artifact 5: CI/CD Testing (GitHub Actions + Argo CD)
+
+### Tool
+
+1. GitHub Actions
+2. Docker Hub
+3. Argo CD
+
+### General purpose of the tool
+
+1. Build and publish images automatically from source changes.
+2. Keep deployment manifests aligned with image versions.
+3. Continuously sync cluster state from Git.
+
+### Purpose in this project
+
+1. Build/push all 4 service images after backend/frontend code changes.
+2. Automatically update Kubernetes image tags in repo manifests.
+3. Automatically deploy updated manifests to kind cluster using Argo CD.
+
+### One-time setup
+
+In GitHub repository settings, add:
+
+1. `DOCKERHUB_USERNAME` secret
+2. `DOCKERHUB_TOKEN` secret
+3. Actions workflow permission set to read and write repository contents
+
+### Commands
+
+Install/setup Argo CD through Ansible:
+
+```bash
+cd /mnt/d/university/SEMESTER\ 8/cloud\ computing/project3/online_catalog/infra/ansible
+ansible-playbook -i inventory.ini playbooks/site.yml
+```
+
+Trigger CI by pushing a backend/frontend change:
+
+```bash
+git add .
+git commit -m "test: trigger ci pipeline"
+git push origin master
+```
+
+Verify Argo CD sync status on EC2:
+
+```bash
+export KUBECONFIG=/home/ec2-user/.kube/config
+kubectl get application -n argocd
+kubectl describe application online-catalog -n argocd
+kubectl get pods -n online-catalog
+```
+
+Get Argo CD admin password (first login):
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+```
+
+Argo CD UI URL:
+
+1. `https://<EC2_PUBLIC_IP>:30443`
+
+### What this tests
+
+1. CI pipeline triggers correctly on code push.
+2. Docker images are published successfully.
+3. Kubernetes manifests are updated with new image tags.
+4. Argo CD detects Git changes and auto-syncs deployments.
+
+### Expected results
+
+1. GitHub Actions workflow passes both jobs.
+2. New `sha-*` image tags are visible in Docker Hub.
+3. Kubernetes manifest files in repo show updated image tags.
+4. Argo CD Application shows `Synced` and `Healthy`.
+
+### Evidence to capture
+
+1. GitHub Actions run summary (success).
+2. Commit containing updated manifest image tags.
+3. `kubectl get application -n argocd` output.
+4. Argo CD UI screenshot showing synced application.
 
 ## Safe Stop and Cost Cleanup
 
@@ -305,8 +472,11 @@ Check in AWS Console:
 1. Show docker compose build and running services.
 2. Show Terraform apply and output values.
 3. Show Ansible ping and playbook run.
-4. Show cluster readiness with kubectl get nodes.
-5. Show cleanup command terraform destroy at the end.
+4. Show Kubernetes apply output and rollout success.
+5. Push one backend/frontend change and show successful GitHub Actions run.
+6. Show Argo CD application auto-sync to latest manifest commit.
+7. Open frontend and API NodePort URLs from browser.
+8. Show cleanup command terraform destroy at the end.
 
 ## Collaboration Validation (Run Before Final Demo Day)
 
