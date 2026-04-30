@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: catalog-management
-          image: docker.io/ayaankhan17/catalog-management:sha-1f708f3d17cc8ac4370242e7cb3af8e4929a62e7
+          image: docker.io/ayaankhan17/catalog-management:sha-bf273eb3102e9525054e982b124c7fb38fdc8dad
           imagePullPolicy: Always
           ports:
             - containerPort: 8081
